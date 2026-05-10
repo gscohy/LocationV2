@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm install && pnpm --filter @gl/web build",
+  "installCommand": "echo 'Skipping default install'",
+  "outputDirectory": "apps/web/dist",
+  "framework": null,
+  "devCommand": "pnpm --filter @gl/web dev",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
