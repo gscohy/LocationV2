@@ -1,5 +1,14 @@
 import { Link, Outlet, createFileRoute, redirect, useRouter } from '@tanstack/react-router';
-import { Building, Building2, Home, LogOut, ShieldCheck, UserCircle, Users } from 'lucide-react';
+import {
+  Building,
+  Building2,
+  FileText,
+  Home,
+  LogOut,
+  ShieldCheck,
+  UserCircle,
+  Users,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -25,6 +34,7 @@ const navItems = [
   { to: '/biens', label: 'Biens', icon: Building2, exact: false },
   { to: '/locataires', label: 'Locataires', icon: UserCircle, exact: false },
   { to: '/garants', label: 'Garants', icon: ShieldCheck, exact: false },
+  { to: '/contrats', label: 'Contrats', icon: FileText, exact: false },
 ] as const;
 
 function AuthenticatedLayout() {
