@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { CodePostalVilleFields } from '@/components/ui/code-postal-ville-fields';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SignaturePad } from '@/components/ui/signature-pad';
 import {
   useCreateProprietaire,
   useUpdateProprietaire,
@@ -44,6 +45,7 @@ const formSchema = z.object({
     .trim()
     .refine((v) => v === '' || /^\d{14}$/.test(v), 'SIRET = 14 chiffres'),
   numeroRIB: z.string().trim(),
+  signatureDataUrl: z.string().trim().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -60,6 +62,7 @@ const emptyDefaults: FormValues = {
   entreprise: '',
   siret: '',
   numeroRIB: '',
+  signatureDataUrl: undefined,
 };
 
 function proprietaireToDefaults(p: Proprietaire): FormValues {
@@ -75,6 +78,7 @@ function proprietaireToDefaults(p: Proprietaire): FormValues {
     entreprise: p.entreprise ?? '',
     siret: p.siret ?? '',
     numeroRIB: p.numeroRIB ?? '',
+    signatureDataUrl: p.signatureDataUrl,
   };
 }
 
@@ -92,6 +96,7 @@ function formToInput(values: FormValues): CreateProprietaireInput {
     entreprise: trim(values.entreprise),
     siret: trim(values.siret),
     numeroRIB: trim(values.numeroRIB),
+    signatureDataUrl: values.signatureDataUrl,
   };
 }
 
@@ -233,6 +238,15 @@ export function ProprietaireFormDialog({ open, onOpenChange, proprietaire }: Pro
           <div className="space-y-1.5">
             <Label htmlFor="numeroRIB">IBAN (pour réception des loyers)</Label>
             <Input id="numeroRIB" placeholder="FR76…" {...form.register('numeroRIB')} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Signature (apparaîtra sur les quittances)</Label>
+            <SignaturePad
+              value={form.watch('signatureDataUrl')}
+              onChange={(v) => form.setValue('signatureDataUrl', v, { shouldDirty: true })}
+              disabled={isSubmitting}
+            />
           </div>
 
           <DialogFooter>

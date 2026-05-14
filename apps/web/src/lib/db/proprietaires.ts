@@ -23,6 +23,7 @@ interface ProprietaireRow {
   entreprise: string | null;
   siret: string | null;
   iban: string | null;
+  signature_data_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +41,7 @@ export interface Proprietaire {
   entreprise: string | undefined;
   siret: string | undefined;
   numeroRIB: string | undefined;
+  signatureDataUrl: string | undefined;
   createdAt: string;
 }
 
@@ -57,6 +59,7 @@ function rowToProprietaire(row: ProprietaireRow): Proprietaire {
     entreprise: row.entreprise ?? undefined,
     siret: row.siret ?? undefined,
     numeroRIB: row.iban ?? undefined,
+    signatureDataUrl: row.signature_data_url ?? undefined,
     createdAt: row.created_at,
   };
 }
@@ -76,6 +79,7 @@ function inputToInsert(input: CreateProprietaireInput, ownerUserId: string) {
     entreprise: input.entreprise ?? null,
     siret: input.siret ?? null,
     iban: input.numeroRIB ?? null,
+    signature_data_url: input.signatureDataUrl ?? null,
   };
 }
 
@@ -92,6 +96,8 @@ function inputToUpdate(input: UpdateProprietaireInput) {
   if (input.entreprise !== undefined) update.entreprise = input.entreprise ?? null;
   if (input.siret !== undefined) update.siret = input.siret ?? null;
   if (input.numeroRIB !== undefined) update.iban = input.numeroRIB ?? null;
+  if (input.signatureDataUrl !== undefined)
+    update.signature_data_url = input.signatureDataUrl ?? null;
   update.updated_at = new Date().toISOString();
   return update;
 }

@@ -50,6 +50,9 @@ packages/db/prisma/migrations/dev.db*
 # Uploads (legacy, ne devrait plus exister)
 uploads/
 
+# Screenshots / images locales hors source (signatures scan, captures, etc.)
+image/
+
 # Docker volumes (data persistante locale)
 infra/data/
 

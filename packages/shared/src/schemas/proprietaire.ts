@@ -16,6 +16,8 @@ const baseProprietaire = z.object({
     .regex(/^\d{14}$/, 'SIRET = 14 chiffres')
     .optional(),
   numeroRIB: z.string().trim().optional(),
+  /** Image de signature en data URL (image/png;base64,...). Optionnelle. */
+  signatureDataUrl: z.string().trim().optional(),
 });
 
 export const createProprietaireSchema = baseProprietaire;

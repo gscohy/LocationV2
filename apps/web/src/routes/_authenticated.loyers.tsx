@@ -1,5 +1,5 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { Banknote, Calendar, Eye, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { createFileRoute, useRouter } from '@tanstack/react-router';
+import { Banknote, Calendar, Eye, FileCheck, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -15,6 +15,7 @@ import {
   type LoyersFilters,
   type StatutLoyer,
 } from '@/lib/db/loyers';
+import { useCreateQuittance } from '@/lib/db/quittances';
 import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/_authenticated/loyers')({
@@ -70,6 +71,8 @@ const SELECT_CLASS =
   'h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 function LoyersPage() {
+  const router = useRouter();
+  const createQuittance = useCreateQuittance();
   const now = new Date();
   const [filterStatut, setFilterStatut] = useState<StatutLoyer | ''>('');
   const [filterAnnee, setFilterAnnee] = useState<number | ''>(now.getFullYear());
@@ -121,6 +124,24 @@ function LoyersPage() {
   const openViewPaiements = (l: Loyer) => {
     setViewing(l);
     setViewPaiementsOpen(true);
+  };
+
+  const handleEmettreQuittance = async (l: Loyer) => {
+    const label = `${MOIS_LABELS[l.mois - 1]} ${l.annee} — ${l.contrat?.bienAdresse ?? '?'}`;
+    if (
+      !window.confirm(
+        `Émettre une quittance pour « ${label} » ?\n\nUne éventuelle quittance précédente sur ce loyer sera marquée Annulée.`,
+      )
+    )
+      return;
+    try {
+      const id = await createQuittance.mutateAsync({ loyerId: l.id });
+      toast.success('Quittance générée — ouverture dans un nouvel onglet');
+      const url = router.buildLocation({ to: '/quittances/$id', params: { id } }).href;
+      window.open(url, '_blank', 'noopener');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erreur lors de la génération');
+    }
   };
 
   const handleDelete = async (l: Loyer) => {
@@ -329,6 +350,18 @@ function LoyersPage() {
                         >
                           <Banknote className="h-4 w-4 text-green-700" />
                           <span className="sr-only">Encaisser</span>
+                        </Button>
+                      )}
+                      {l.statut === 'PAYE' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEmettreQuittance(l)}
+                          disabled={createQuittance.isPending}
+                          title="Émettre une quittance"
+                        >
+                          <FileCheck className="h-4 w-4 text-purple-700" />
+                          <span className="sr-only">Émettre quittance</span>
                         </Button>
                       )}
                       <Button variant="ghost" size="icon" onClick={() => openEdit(l)}>

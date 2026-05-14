@@ -4,9 +4,11 @@ import {
   Building,
   Building2,
   Calendar,
+  FileCheck,
   FileText,
   Home,
   LogOut,
+  Settings,
   ShieldCheck,
   UserCircle,
   Users,
@@ -39,6 +41,8 @@ const navItems = [
   { to: '/contrats', label: 'Contrats', icon: FileText, exact: false },
   { to: '/loyers', label: 'Loyers', icon: Calendar, exact: false },
   { to: '/paiements', label: 'Paiements', icon: Banknote, exact: false },
+  { to: '/quittances', label: 'Quittances', icon: FileCheck, exact: false },
+  { to: '/parametres', label: 'Paramètres', icon: Settings, exact: false },
 ] as const;
 
 function AuthenticatedLayout() {
@@ -57,7 +61,7 @@ function AuthenticatedLayout() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-background">
+      <header className="border-b bg-background print:hidden">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-8">
             <Link to="/" className="flex items-center gap-2 font-semibold">

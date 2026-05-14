@@ -4,6 +4,7 @@ import {
   Banknote,
   Building2,
   Calendar,
+  FileCheck,
   FileText,
   ShieldCheck,
   UserCircle,
@@ -57,6 +58,12 @@ const cards = [
     description: 'Encaissements ventilés sur les loyers, recalcul automatique des statuts.',
     icon: Banknote,
   },
+  {
+    to: '/quittances' as const,
+    title: 'Quittances',
+    description: 'Émission depuis un loyer payé, vue imprimable / PDF natif navigateur.',
+    icon: FileCheck,
+  },
 ];
 
 function HomePage() {
@@ -65,9 +72,7 @@ function HomePage() {
       <div className="mx-auto max-w-3xl space-y-8">
         <div className="space-y-2">
           <h1 className="text-4xl font-bold tracking-tight">Tableau de bord</h1>
-          <p className="text-muted-foreground">
-            Modules disponibles. Les quittances PDF arrivent ensuite.
-          </p>
+          <p className="text-muted-foreground">Modules disponibles.</p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

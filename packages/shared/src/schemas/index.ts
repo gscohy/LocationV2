@@ -9,3 +9,4 @@ export * from './contrat';
 export * from './loyer';
 export * from './paiement';
 export * from './quittance';
+export * from './parametres-smtp';
