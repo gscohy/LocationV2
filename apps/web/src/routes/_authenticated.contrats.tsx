@@ -1,7 +1,7 @@
 import type { StatutContrat, TypeContrat } from '@gl/shared';
 import { createFileRoute } from '@tanstack/react-router';
 import { FileX, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ContratFormDialog } from '@/components/contrats/contrat-form-dialog';
@@ -57,12 +57,19 @@ const formatDate = (iso: string | undefined) => {
 };
 
 function ContratsPage() {
-  const { data, isPending, error } = useContrats();
+  const { data: rawData, isPending, error } = useContrats();
   const deleteMutation = useDeleteContrat();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Contrat | undefined>();
   const [resiliationOpen, setResiliationOpen] = useState(false);
   const [resiliating, setResiliating] = useState<Contrat | undefined>();
+  const [filterStatut, setFilterStatut] = useState<StatutContrat | ''>('');
+
+  const data = useMemo(() => {
+    if (!rawData) return rawData;
+    if (filterStatut === '') return rawData;
+    return rawData.filter((c) => c.statut === filterStatut);
+  }, [rawData, filterStatut]);
 
   const openCreate = () => {
     setEditing(undefined);
@@ -104,6 +111,34 @@ function ContratsPage() {
           <Plus className="h-4 w-4" />
           Nouveau
         </Button>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 p-3">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-muted-foreground" htmlFor="f-statut">
+            Statut
+          </label>
+          <select
+            id="f-statut"
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={filterStatut}
+            onChange={(e) => setFilterStatut(e.target.value as StatutContrat | '')}
+          >
+            <option value="">Tous</option>
+            {(Object.keys(STATUT_LABEL) as StatutContrat[]).map((s) => (
+              <option key={s} value={s}>
+                {STATUT_LABEL[s]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {rawData && (
+          <div className="ml-auto text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">{data?.length ?? 0}</span> sur{' '}
+            <span className="font-medium text-foreground">{rawData.length}</span> contrat
+            {rawData.length > 1 ? 's' : ''}
+          </div>
+        )}
       </div>
 
       {isPending && (

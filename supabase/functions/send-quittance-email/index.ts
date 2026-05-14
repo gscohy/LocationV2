@@ -16,7 +16,7 @@
 import { serve } from 'https://deno.land/std@0.192.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts';
-import { PDFDocument, StandardFonts, rgb } from 'https://cdn.skypack.dev/pdf-lib?dts';
+import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -49,7 +49,7 @@ serve(async (req) => {
   }
 
   try {
-    const { quittanceId, to, cc, subject, body } = await req.json();
+    const { quittanceId, to, cc, bcc, subject, body } = await req.json();
     if (!quittanceId || !Array.isArray(to) || to.length === 0 || !subject || !body) {
       throw new Error('Paramètres requis : quittanceId, to (array), subject, body');
     }
@@ -134,8 +134,10 @@ serve(async (req) => {
     const filename = `quittance-${q.periode.toLowerCase().replace(/\s+/g, '-')}.pdf`;
     await client.send({
       from: `${smtp.from_name} <${smtp.from_email}>`,
+      replyTo: smtp.from_email,
       to,
-      cc: cc && cc.length > 0 ? cc : undefined,
+      cc: Array.isArray(cc) && cc.length > 0 ? cc : undefined,
+      bcc: Array.isArray(bcc) && bcc.length > 0 ? bcc : undefined,
       subject,
       content: body,
       html: body.replace(/\n/g, '<br>'),
@@ -151,7 +153,7 @@ serve(async (req) => {
     await client.close();
 
     // 6. Mise à jour de la quittance
-    const allDestinataires = [...to, ...(cc ?? [])].join(', ');
+    const allDestinataires = [...to, ...(cc ?? []), ...(bcc ?? [])].join(', ');
     await supabase
       .from('quittances')
       .update({

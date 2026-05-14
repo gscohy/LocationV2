@@ -8,6 +8,8 @@ import {
   FileText,
   Home,
   LogOut,
+  MailWarning,
+  Receipt,
   Settings,
   ShieldCheck,
   UserCircle,
@@ -42,6 +44,8 @@ const navItems = [
   { to: '/loyers', label: 'Loyers', icon: Calendar, exact: false },
   { to: '/paiements', label: 'Paiements', icon: Banknote, exact: false },
   { to: '/quittances', label: 'Quittances', icon: FileCheck, exact: false },
+  { to: '/rappels', label: 'Rappels', icon: MailWarning, exact: false },
+  { to: '/charges', label: 'Charges', icon: Receipt, exact: false },
   { to: '/parametres', label: 'Paramètres', icon: Settings, exact: false },
 ] as const;
 

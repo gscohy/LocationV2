@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { cleanupOrphanLoyer } from '@/lib/db/loyers';
 import { supabase } from '@/lib/supabase';
 
 const TABLE_PAIEMENTS = 'paiements';
@@ -322,6 +323,13 @@ export function useUpdatePaiement() {
       for (const loyerId of tousLoyerIds) {
         await recalcLoyerStatut(loyerId);
       }
+      // 5. Nettoyer les loyers orphelins (auto-créés pour absorber un surplus
+      //    qui a disparu suite à cette modification).
+      for (const loyerId of anciensLoyerIds) {
+        if (!input.ventilations.some((v) => v.loyerId === loyerId)) {
+          await cleanupOrphanLoyer(loyerId);
+        }
+      }
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['paiements'] });
@@ -363,6 +371,8 @@ export function useDeletePaiement() {
 
       for (const loyerId of loyerIds) {
         await recalcLoyerStatut(loyerId);
+        // Nettoyer les loyers auto-générés devenus orphelins suite à la suppression.
+        await cleanupOrphanLoyer(loyerId);
       }
     },
     onSuccess: () => {

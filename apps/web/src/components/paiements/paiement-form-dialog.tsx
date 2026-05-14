@@ -336,73 +336,162 @@ export function PaiementFormDialog({ open, onOpenChange, prefillLoyer }: Props) 
   }
 
   /**
-   * Si surplus, propose le report sur le mois suivant. Si OK, ré-écrit les lignes :
-   * la dernière ligne de chaque loyer en surplus est réduite, une nouvelle ligne
-   * (mêmes date/mode/payeur/référence) est ajoutée vers le loyer du mois suivant.
-   * Retourne null en cas d'erreur, sinon le nouveau tableau de lignes à envoyer.
+   * Si surplus, propose le report en CASCADE sur les mois suivants jusqu'à
+   * absorption complète. Ex : un paiement de 2000 € sur un loyer de 323,50 €
+   * va solder le mois courant + créer et solder les 5 mois suivants + laisser
+   * le reliquat sur le 6e.
+   *
+   * Retourne null si erreur, lignes inchangées si refus, le nouveau tableau sinon.
    */
   async function applyReportSurplus(): Promise<EncaissementLine[] | null> {
     if (surplusList.length === 0) return lignes;
 
-    const messages = surplusList.map((s) => {
-      const next = moisSuivant(s.loyer);
-      return `• ${MOIS_LONG[s.loyer.mois - 1]} ${s.loyer.annee} : surplus de ${formatEuro(
-        s.surplus,
-      )} → reporter sur ${MOIS_LONG[next.mois - 1]} ${next.annee}`;
-    });
+    // Cache des loyers connus (montant_paye + montant_total + contratId + période)
+    // pour éviter de re-fetcher à chaque itération de la cascade.
+    type LoyerInfo = {
+      id: string;
+      montantPaye: number;
+      montantTotal: number;
+      contratId: string;
+      mois: number;
+      annee: number;
+    };
+    const loyersConnus = new Map<string, LoyerInfo>();
+    for (const lo of loyersOuverts) {
+      loyersConnus.set(lo.id, {
+        id: lo.id,
+        montantPaye: lo.montantPaye,
+        montantTotal: lo.montantTotal,
+        contratId: lo.contrat?.id ?? '',
+        mois: lo.mois,
+        annee: lo.annee,
+      });
+    }
+
+    // Cache des montants attendus par contrat (loyer + charges_mensuelles)
+    // pour les loyers qu'on va créer en cascade.
+    const contratsConnus = new Map<string, { loyer: number; charges: number }>();
+    const fetchMontantsContrat = async (contratId: string) => {
+      const cached = contratsConnus.get(contratId);
+      if (cached) return cached;
+      const { data, error } = await supabase
+        .from('contrats')
+        .select('loyer, charges_mensuelles')
+        .eq('id', contratId)
+        .maybeSingle();
+      if (error || !data) {
+        throw new Error('Contrat introuvable pour calculer le montant suivant');
+      }
+      const d = data as { loyer: number; charges_mensuelles: number };
+      const out = { loyer: Number(d.loyer), charges: Number(d.charges_mensuelles) };
+      contratsConnus.set(contratId, out);
+      return out;
+    };
+
+    // Premier confirm — résumé général
+    const messages = surplusList.map(
+      (s) => `• ${MOIS_LONG[s.loyer.mois - 1]} ${s.loyer.annee} : surplus de ${formatEuro(s.surplus)}`,
+    );
     const ok = window.confirm(
       `Trop perçu détecté :\n\n${messages.join(
         '\n',
-      )}\n\nReporter automatiquement l'excédent sur le mois suivant ?\n\n• OK = créer les loyers manquants et ventiler l'excédent sur le mois suivant (avec les mêmes date/mode/payeur).\n• Annuler = enregistrer tel quel. Le loyer sera marqué payé, le trop-perçu reste non reporté.`,
+      )}\n\nReporter automatiquement l'excédent en cascade sur les mois suivants ?\n\n• OK = créer les loyers manquants et ventiler le surplus jusqu'à absorption (24 mois max par sécurité).\n• Annuler = enregistrer tel quel sans report.`,
     );
     if (!ok) return lignes;
 
     const newLignes: EncaissementLine[] = [...lignes];
+    const MAX_ITERATIONS = 24;
 
-    for (const s of surplusList) {
-      const contratId = s.loyer.contratId;
-      if (!contratId) {
-        toast.error(
-          `Impossible de reporter : contrat introuvable pour ${MOIS_LONG[s.loyer.mois - 1]} ${s.loyer.annee}`,
-        );
-        return null;
+    for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+      // Agréger les montants par loyer dans l'état courant des lignes
+      const cumul = new Map<string, number>();
+      for (const l of newLignes) {
+        if (!l.loyerId) continue;
+        const m = Number(l.montant) || 0;
+        if (m <= 0) continue;
+        cumul.set(l.loyerId, (cumul.get(l.loyerId) ?? 0) + m);
       }
-      // Trouver la dernière ligne pointant ce loyer pour y prélever le surplus.
-      let idxLastForLoyer = -1;
-      for (let i = newLignes.length - 1; i >= 0; i--) {
-        if (newLignes[i]?.loyerId === s.loyer.id) {
-          idxLastForLoyer = i;
+
+      // Trouver le premier loyer en surplus
+      let loyerEnSurplus: { info: LoyerInfo; surplus: number } | null = null;
+      for (const [loyerId, totalSaisi] of cumul) {
+        const info = loyersConnus.get(loyerId);
+        if (!info) continue;
+        const nouveauPaye = info.montantPaye + totalSaisi;
+        const surplus = nouveauPaye - info.montantTotal;
+        if (surplus > 0.005) {
+          loyerEnSurplus = { info, surplus };
           break;
         }
       }
-      if (idxLastForLoyer === -1) continue;
+      if (!loyerEnSurplus) break; // plus de surplus, on a fini
 
-      const next = moisSuivant(s.loyer);
+      const { info: source, surplus } = loyerEnSurplus;
+      if (!source.contratId) {
+        toast.error(`Contrat introuvable pour ${MOIS_LONG[source.mois - 1]} ${source.annee}`);
+        return null;
+      }
+
+      // Réduire la dernière ligne pointant ce loyer du surplus
+      let idxLast = -1;
+      for (let i = newLignes.length - 1; i >= 0; i--) {
+        if (newLignes[i]?.loyerId === source.id) {
+          idxLast = i;
+          break;
+        }
+      }
+      if (idxLast === -1) break;
+      const sourceLigne = newLignes[idxLast]!;
+      const ligneMontant = Number(sourceLigne.montant) || 0;
+      newLignes[idxLast] = {
+        ...sourceLigne,
+        montant: String(Math.max(0, ligneMontant - surplus).toFixed(2)),
+      };
+
+      // Créer (ou retrouver) le loyer du mois suivant
+      const moisN = source.mois === 12 ? 1 : source.mois + 1;
+      const anneeN = source.mois === 12 ? source.annee + 1 : source.annee;
       let nextLoyerId: string;
       try {
-        const { id } = await ensureLoyerForMonth(contratId, next.mois, next.annee);
+        const { id } = await ensureLoyerForMonth(source.contratId, moisN, anneeN);
         nextLoyerId = id;
       } catch (e) {
         toast.error(
           e instanceof Error
-            ? `Création loyer ${MOIS_LONG[next.mois - 1]} ${next.annee} : ${e.message}`
+            ? `Création loyer ${MOIS_LONG[moisN - 1]} ${anneeN} : ${e.message}`
             : 'Erreur création loyer suivant',
         );
         return null;
       }
 
-      const source = newLignes[idxLastForLoyer]!;
-      const sourceMontant = Number(source.montant) || 0;
-      const reducedMontant = Math.max(0, sourceMontant - s.surplus);
-      newLignes[idxLastForLoyer] = { ...source, montant: String(reducedMontant) };
+      // Ajouter ce nouveau loyer dans notre cache (montant_paye=0 par défaut,
+      // total = loyer du contrat + charges mensuelles)
+      if (!loyersConnus.has(nextLoyerId)) {
+        try {
+          const m = await fetchMontantsContrat(source.contratId);
+          loyersConnus.set(nextLoyerId, {
+            id: nextLoyerId,
+            montantPaye: 0,
+            montantTotal: m.loyer + m.charges,
+            contratId: source.contratId,
+            mois: moisN,
+            annee: anneeN,
+          });
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : 'Erreur fetch contrat');
+          return null;
+        }
+      }
+
+      // Ajouter la nouvelle ligne avec le surplus
       newLignes.push({
         loyerId: nextLoyerId,
-        montant: String(s.surplus),
-        dateReception: source.dateReception,
-        mode: source.mode,
-        payeurType: source.payeurType,
-        payeurCustom: source.payeurCustom,
-        reference: source.reference,
+        montant: surplus.toFixed(2),
+        dateReception: sourceLigne.dateReception,
+        mode: sourceLigne.mode,
+        payeurType: sourceLigne.payeurType,
+        payeurCustom: sourceLigne.payeurCustom,
+        reference: sourceLigne.reference,
       });
     }
 

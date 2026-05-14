@@ -74,24 +74,34 @@ export function EnvoyerQuittanceDialog({ open, onOpenChange, quittance }: Props)
 
   const [to, setTo] = useState('');
   const [cc, setCc] = useState('');
+  const [bcc, setBcc] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [mode, setMode] = useState<ModeEnvoi>('EMAIL');
   const [sending, setSending] = useState(false);
 
-  // Pré-remplissage à l'ouverture
+  // Pré-remplissage à l'ouverture (dédup des emails côté locataires & propriétaires).
   useEffect(() => {
     if (!open || !quittance) return;
-    const emailsLocataires = (quittance.loyer?.tousLocataires ?? [])
-      .map((l) => l.email)
-      .filter((e): e is string => Boolean(e))
-      .join(', ');
-    const emailsProprietaires = (quittance.loyer?.proprietaires ?? [])
-      .map((p) => p.email)
-      .filter((e) => Boolean(e))
-      .join(', ');
+    const dedup = (emails: (string | null | undefined)[]) =>
+      Array.from(
+        new Set(
+          emails
+            .filter((e): e is string => Boolean(e))
+            .map((e) => e.trim().toLowerCase())
+            .filter((e) => e !== ''),
+        ),
+      );
+    const emailsLocataires = dedup(
+      (quittance.loyer?.tousLocataires ?? []).map((l) => l.email),
+    ).join(', ');
+    // Règle d'or : propriétaires en Bcc (copie cachée), pas en Cc visible par le locataire.
+    const emailsProprietaires = dedup(
+      (quittance.loyer?.proprietaires ?? []).map((p) => p.email),
+    ).join(', ');
     setTo(emailsLocataires);
-    setCc(emailsProprietaires);
+    setCc('');
+    setBcc(emailsProprietaires);
     setSubject(defaultSubject(quittance));
     setBody(defaultBody(quittance));
     setMode('EMAIL');
@@ -100,10 +110,11 @@ export function EnvoyerQuittanceDialog({ open, onOpenChange, quittance }: Props)
   const mailtoUrl = useMemo(() => {
     const params = new URLSearchParams();
     if (cc.trim()) params.set('cc', cc.trim());
+    if (bcc.trim()) params.set('bcc', bcc.trim());
     if (subject.trim()) params.set('subject', subject.trim());
     if (body.trim()) params.set('body', body);
     return `mailto:${encodeURIComponent(to.trim())}?${params.toString().replace(/\+/g, '%20')}`;
-  }, [to, cc, subject, body]);
+  }, [to, cc, bcc, subject, body]);
 
   const handleOpenMailClient = () => {
     if (!to.trim()) {
@@ -143,6 +154,7 @@ export function EnvoyerQuittanceDialog({ open, onOpenChange, quittance }: Props)
       return;
     }
     const ccList = cc.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+    const bccList = bcc.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
 
     setSending(true);
     try {
@@ -151,6 +163,7 @@ export function EnvoyerQuittanceDialog({ open, onOpenChange, quittance }: Props)
           quittanceId: quittance.id,
           to: toList,
           cc: ccList,
+          bcc: bccList,
           subject,
           body,
         },
@@ -169,7 +182,13 @@ export function EnvoyerQuittanceDialog({ open, onOpenChange, quittance }: Props)
 
   const handleMarkEnvoyee = async () => {
     if (!quittance) return;
-    const destinataires = [to.trim(), cc.trim() ? `cc: ${cc.trim()}` : ''].filter(Boolean).join(' | ');
+    const destinataires = [
+      to.trim(),
+      cc.trim() ? `cc: ${cc.trim()}` : '',
+      bcc.trim() ? `bcc: ${bcc.trim()}` : '',
+    ]
+      .filter(Boolean)
+      .join(' | ');
     try {
       await mark.mutateAsync({
         id: quittance.id,
@@ -210,15 +229,28 @@ export function EnvoyerQuittanceDialog({ open, onOpenChange, quittance }: Props)
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="env-cc">Cc (propriétaires)</Label>
+            <Label htmlFor="env-cc">Cc (visible par le locataire)</Label>
             <Input
               id="env-cc"
               value={cc}
               onChange={(e) => setCc(e.target.value)}
-              placeholder="email@x.fr"
+              placeholder="(vide par défaut)"
               disabled={isSubmitting}
             />
-            <p className="text-xs text-muted-foreground">Le(s) propriétaire(s) en copie automatique.</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="env-bcc">Cci — copie cachée (propriétaires)</Label>
+            <Input
+              id="env-bcc"
+              value={bcc}
+              onChange={(e) => setBcc(e.target.value)}
+              placeholder="proprio@x.fr"
+              disabled={isSubmitting}
+            />
+            <p className="text-xs text-muted-foreground">
+              Pré-rempli avec tous les propriétaires du bien — invisible par le locataire.
+            </p>
           </div>
 
           <div className="space-y-1.5">

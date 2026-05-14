@@ -1,0 +1,17 @@
+{
+  "name": "migrate-from-local-v1",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "discover": "node discover.mjs",
+    "migrate:dry": "node migrate.mjs --dry-run",
+    "migrate:apply": "node migrate.mjs --apply"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "dotenv": "^16.4.5",
+    "pg": "^8.13.0",
+    "uuid": "^10.0.0"
+  }
+}

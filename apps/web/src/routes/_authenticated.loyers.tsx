@@ -1,12 +1,15 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
-import { Banknote, Calendar, Eye, FileCheck, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { Banknote, Calendar, Eye, FileCheck, LayoutGrid, List, Loader2, MailWarning, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { GenerateLoyersDialog } from '@/components/loyers/generate-loyers-dialog';
 import { LoyerEditDialog } from '@/components/loyers/loyer-edit-dialog';
 import { LoyerPaiementsDialog } from '@/components/loyers/loyer-paiements-dialog';
+import { LoyersSyntheseView } from '@/components/loyers/loyers-synthese';
 import { PaiementFormDialog } from '@/components/paiements/paiement-form-dialog';
+import { RappelFormDialog } from '@/components/rappels/rappel-form-dialog';
+import { useRecalcLoyer } from '@/lib/db/paiements';
 import { Button } from '@/components/ui/button';
 import {
   useDeleteLoyer,
@@ -15,6 +18,8 @@ import {
   type LoyersFilters,
   type StatutLoyer,
 } from '@/lib/db/loyers';
+import { useBiens } from '@/lib/db/biens';
+import { useLocataires } from '@/lib/db/locataires';
 import { useCreateQuittance } from '@/lib/db/quittances';
 import { cn } from '@/lib/utils';
 
@@ -74,21 +79,42 @@ function LoyersPage() {
   const router = useRouter();
   const createQuittance = useCreateQuittance();
   const now = new Date();
+  const [viewMode, setViewMode] = useState<'liste' | 'synthese'>('liste');
   const [filterStatut, setFilterStatut] = useState<StatutLoyer | ''>('');
   const [filterAnnee, setFilterAnnee] = useState<number | ''>(now.getFullYear());
   const [filterMois, setFilterMois] = useState<number | ''>('');
+  const [filterBien, setFilterBien] = useState('');
+  const [filterLocataire, setFilterLocataire] = useState('');
+  const biensQuery = useBiens();
+  const locatairesQuery = useLocataires();
 
+  // En mode synthèse, on ignore les filtres statut/mois (chaque cellule a son propre statut).
   const filters: LoyersFilters = useMemo(
-    () => ({
-      statut: filterStatut === '' ? undefined : filterStatut,
-      annee: filterAnnee === '' ? undefined : filterAnnee,
-      mois: filterMois === '' ? undefined : filterMois,
-    }),
-    [filterStatut, filterAnnee, filterMois],
+    () =>
+      viewMode === 'synthese'
+        ? { annee: filterAnnee === '' ? undefined : filterAnnee }
+        : {
+            statut: filterStatut === '' ? undefined : filterStatut,
+            annee: filterAnnee === '' ? undefined : filterAnnee,
+            mois: filterMois === '' ? undefined : filterMois,
+          },
+    [viewMode, filterStatut, filterAnnee, filterMois],
   );
 
-  const { data, isPending, error } = useLoyers(filters);
+  const { data: rawData, isPending, error } = useLoyers(filters);
+
+  // Filtrage côté front pour bien / locataire (joints non disponibles côté query).
+  const data = useMemo(() => {
+    if (!rawData) return rawData;
+    return rawData.filter((l) => {
+      if (filterBien && l.contrat?.bienId !== filterBien) return false;
+      if (filterLocataire && !l.contrat?.locataireIds.includes(filterLocataire)) return false;
+      return true;
+    });
+  }, [rawData, filterBien, filterLocataire]);
+
   const deleteMutation = useDeleteLoyer();
+  const recalcMutation = useRecalcLoyer();
 
   const [generateOpen, setGenerateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -97,6 +123,8 @@ function LoyersPage() {
   const [paiementPrefill, setPaiementPrefill] = useState<Loyer | undefined>();
   const [viewPaiementsOpen, setViewPaiementsOpen] = useState(false);
   const [viewing, setViewing] = useState<Loyer | undefined>();
+  const [rappelOpen, setRappelOpen] = useState(false);
+  const [rappelTarget, setRappelTarget] = useState<Loyer | undefined>();
 
   const totals = useMemo(() => {
     const list = data ?? [];
@@ -126,6 +154,20 @@ function LoyersPage() {
     setViewPaiementsOpen(true);
   };
 
+  const openRappel = (l: Loyer) => {
+    setRappelTarget(l);
+    setRappelOpen(true);
+  };
+
+  const handleRecalc = async (l: Loyer) => {
+    try {
+      await recalcMutation.mutateAsync(l.id);
+      toast.success('Statut du loyer resynchronisé');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erreur de recalcul');
+    }
+  };
+
   const handleEmettreQuittance = async (l: Loyer) => {
     const label = `${MOIS_LABELS[l.mois - 1]} ${l.annee} — ${l.contrat?.bienAdresse ?? '?'}`;
     if (
@@ -146,7 +188,11 @@ function LoyersPage() {
 
   const handleDelete = async (l: Loyer) => {
     const label = `${MOIS_LABELS[l.mois - 1]} ${l.annee} — ${l.contrat?.bienAdresse ?? '?'}`;
-    if (!window.confirm(`Supprimer le loyer « ${label} » ?\n\nLes paiements ventilés et la quittance associée seront aussi supprimés.`))
+    if (
+      !window.confirm(
+        `Supprimer le loyer « ${label} » ?\n\nCela supprimera également :\n• les ventilations de paiements ciblant ce loyer\n• les paiements qui n'auraient plus aucune ventilation (orphelins)\n• la (ou les) quittance(s) liée(s)\n• les rappels liés`,
+      )
+    )
       return;
     try {
       await deleteMutation.mutateAsync(l.id);
@@ -165,10 +211,40 @@ function LoyersPage() {
             Échéances mensuelles générées à partir des contrats actifs.
           </p>
         </div>
-        <Button onClick={() => setGenerateOpen(true)}>
-          <Calendar className="h-4 w-4" />
-          Générer le mois
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex overflow-hidden rounded-md border">
+            <button
+              type="button"
+              onClick={() => setViewMode('liste')}
+              className={cn(
+                'inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors',
+                viewMode === 'liste'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-background text-muted-foreground hover:bg-muted',
+              )}
+            >
+              <List className="h-3.5 w-3.5" />
+              Liste
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('synthese')}
+              className={cn(
+                'inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors',
+                viewMode === 'synthese'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-background text-muted-foreground hover:bg-muted',
+              )}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              Synthèse
+            </button>
+          </div>
+          <Button onClick={() => setGenerateOpen(true)}>
+            <Calendar className="h-4 w-4" />
+            Générer le mois
+          </Button>
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 p-3">
@@ -226,6 +302,42 @@ function LoyersPage() {
             ))}
           </select>
         </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-muted-foreground" htmlFor="f-bien">
+            Bien
+          </label>
+          <select
+            id="f-bien"
+            className={SELECT_CLASS}
+            value={filterBien}
+            onChange={(e) => setFilterBien(e.target.value)}
+          >
+            <option value="">Tous</option>
+            {(biensQuery.data ?? []).map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.adresse} ({b.codePostal})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-muted-foreground" htmlFor="f-locataire">
+            Locataire
+          </label>
+          <select
+            id="f-locataire"
+            className={SELECT_CLASS}
+            value={filterLocataire}
+            onChange={(e) => setFilterLocataire(e.target.value)}
+          >
+            <option value="">Tous</option>
+            {(locatairesQuery.data ?? []).map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.prenom} {l.nom}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="ml-auto flex gap-4 text-sm">
           <span className="text-muted-foreground">
             <span className="font-medium text-foreground">{totals.count}</span> ligne
@@ -268,7 +380,15 @@ function LoyersPage() {
         </div>
       )}
 
-      {data && data.length > 0 && (
+      {viewMode === 'synthese' && (
+        <LoyersSyntheseView
+          loyers={data ?? []}
+          biens={biensQuery.data ?? []}
+          annee={typeof filterAnnee === 'number' ? filterAnnee : now.getFullYear()}
+        />
+      )}
+
+      {data && data.length > 0 && viewMode === 'liste' && (
         <div className="overflow-hidden rounded-lg border">
           <table className="w-full">
             <thead className="bg-muted/50 text-sm">
@@ -331,15 +451,27 @@ function LoyersPage() {
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
                       {l.montantPaye > 0 && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openViewPaiements(l)}
-                          title="Voir les paiements reçus"
-                        >
-                          <Eye className="h-4 w-4 text-blue-700" />
-                          <span className="sr-only">Voir paiements</span>
-                        </Button>
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openViewPaiements(l)}
+                            title="Voir les paiements reçus"
+                          >
+                            <Eye className="h-4 w-4 text-blue-700" />
+                            <span className="sr-only">Voir paiements</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRecalc(l)}
+                            disabled={recalcMutation.isPending}
+                            title="Recalculer le statut depuis les paiements réels"
+                          >
+                            <RefreshCw className="h-4 w-4 text-slate-600" />
+                            <span className="sr-only">Recalculer</span>
+                          </Button>
+                        </>
                       )}
                       {l.statut !== 'PAYE' && l.statut !== 'ANNULE' && l.soldeRestant > 0 && (
                         <Button
@@ -352,6 +484,20 @@ function LoyersPage() {
                           <span className="sr-only">Encaisser</span>
                         </Button>
                       )}
+                      {l.soldeRestant > 0 &&
+                        l.statut !== 'PAYE' &&
+                        l.statut !== 'ANNULE' &&
+                        l.dateEcheance < new Date().toISOString().slice(0, 10) && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openRappel(l)}
+                            title="Créer un rappel / mise en demeure"
+                          >
+                            <MailWarning className="h-4 w-4 text-amber-600" />
+                            <span className="sr-only">Relancer</span>
+                          </Button>
+                        )}
                       {l.statut === 'PAYE' && (
                         <Button
                           variant="ghost"
@@ -398,6 +544,7 @@ function LoyersPage() {
         onOpenChange={setViewPaiementsOpen}
         loyer={viewing}
       />
+      <RappelFormDialog open={rappelOpen} onOpenChange={setRappelOpen} loyer={rappelTarget} />
     </div>
   );
 }

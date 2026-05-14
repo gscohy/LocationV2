@@ -1,14 +1,16 @@
 import { parametresSmtpSchema, type ParametresSmtpInput } from '@gl/shared';
 import { createFileRoute } from '@tanstack/react-router';
-import { Info, Loader2, Save } from 'lucide-react';
-import { useEffect } from 'react';
+import { Info, Loader2, Save, Send } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useSession } from '@/lib/auth';
 import { useParametresSmtp, useUpsertParametresSmtp } from '@/lib/db/parametres-smtp';
+import { supabase } from '@/lib/supabase';
 
 export const Route = createFileRoute('/_authenticated/parametres')({
   component: ParametresPage,
@@ -37,6 +39,9 @@ const emptyDefaults: FormValues = {
 function ParametresPage() {
   const { data, isPending } = useParametresSmtp();
   const upsert = useUpsertParametresSmtp();
+  const { data: session } = useSession();
+  const [testRecipient, setTestRecipient] = useState('');
+  const [testSending, setTestSending] = useState(false);
 
   const form = useForm<FormValues>({
     defaultValues: emptyDefaults,
@@ -55,6 +60,35 @@ function ParametresPage() {
       });
     }
   }, [data, form]);
+
+  // Pré-remplir le destinataire test avec l'email de l'utilisateur connecté.
+  useEffect(() => {
+    if (session?.user.email && testRecipient === '') {
+      setTestRecipient(session.user.email);
+    }
+  }, [session, testRecipient]);
+
+  const handleSendTest = async () => {
+    if (!data) {
+      toast.error('Enregistre d’abord la configuration SMTP.');
+      return;
+    }
+    const to = testRecipient.trim();
+    if (!to) {
+      toast.error('Destinataire test requis');
+      return;
+    }
+    setTestSending(true);
+    try {
+      const { error } = await supabase.functions.invoke('test-smtp', { body: { to } });
+      if (error) throw error;
+      toast.success(`Email de test envoyé à ${to}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erreur lors du test');
+    } finally {
+      setTestSending(false);
+    }
+  };
 
   const onSubmit = form.handleSubmit(async (values) => {
     const input: ParametresSmtpInput = {
@@ -211,6 +245,38 @@ function ParametresPage() {
             </Button>
           </div>
         </form>
+      )}
+
+      {data && (
+        <div className="mt-8 rounded-md border bg-muted/30 p-4">
+          <h2 className="mb-1 text-sm font-semibold">Tester la configuration</h2>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Envoie un email de test sans pièce jointe via les paramètres ci-dessus pour vérifier
+            que la connexion SMTP fonctionne. Si tu reçois bien le mail, tu peux activer l&apos;envoi
+            de quittances avec PDF en pièce jointe.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-1.5">
+              <Label htmlFor="test-to">Destinataire</Label>
+              <Input
+                id="test-to"
+                type="email"
+                value={testRecipient}
+                onChange={(e) => setTestRecipient(e.target.value)}
+                disabled={testSending}
+                placeholder="moi@exemple.com"
+              />
+            </div>
+            <Button onClick={handleSendTest} disabled={testSending}>
+              {testSending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Envoyer un email de test
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

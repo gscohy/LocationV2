@@ -53,9 +53,12 @@ interface LoyerRowFull extends LoyerRow {
 export interface LoyerContratSummary {
   id: string;
   reference: string | undefined;
+  bienId: string;
   bienAdresse: string;
   bienVille: string;
   locatairePrincipalLabel: string;
+  /** Ids de tous les locataires du contrat (utile pour le filtrage côté liste). */
+  locataireIds: string[];
 }
 
 export interface Loyer {
@@ -92,9 +95,13 @@ function rowToLoyer(row: LoyerRowFull): Loyer {
       ? {
           id: c.id,
           reference: c.reference ?? undefined,
+          bienId: c.biens?.id ?? '',
           bienAdresse: c.biens?.adresse ?? '— bien inconnu —',
           bienVille: c.biens ? `${c.biens.code_postal} ${c.biens.ville}` : '',
           locatairePrincipalLabel: loc ? `${loc.prenom} ${loc.nom}` : '— sans locataire —',
+          locataireIds: (c.contrat_locataires ?? [])
+            .map((cl) => cl.locataires?.id)
+            .filter((x): x is string => Boolean(x)),
         }
       : undefined,
     mois: row.mois,
@@ -173,11 +180,46 @@ export function useDeleteLoyer() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
+      // 1. Récupérer les paiement_id qui ont une ventilation sur ce loyer.
+      const { data: ventils, error: errVentils } = await supabase
+        .from('paiement_ventilations')
+        .select('paiement_id')
+        .eq('loyer_id', id);
+      if (errVentils) throw errVentils;
+      const paiementIds = Array.from(
+        new Set(
+          ((ventils ?? []) as { paiement_id: string }[]).map((v) => v.paiement_id),
+        ),
+      );
+
+      // 2. Supprimer le loyer (cascade SQL : ventilations, quittances, rappels).
       const { error } = await supabase.from(TABLE).delete().eq('id', id);
       if (error) throw error;
+
+      // 3. Pour chaque paiement qui pointait sur ce loyer, vérifier s'il a
+      //    encore d'autres ventilations. Sinon, le supprimer (paiement orphelin).
+      for (const paiementId of paiementIds) {
+        const { data: restantes, error: errRest } = await supabase
+          .from('paiement_ventilations')
+          .select('id')
+          .eq('paiement_id', paiementId)
+          .limit(1);
+        if (errRest) throw errRest;
+        if (!restantes || restantes.length === 0) {
+          const { error: errDel } = await supabase
+            .from('paiements')
+            .delete()
+            .eq('id', paiementId);
+          if (errDel) throw errDel;
+        }
+      }
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['loyers'] });
+      void queryClient.invalidateQueries({ queryKey: ['paiements'] });
+      void queryClient.invalidateQueries({ queryKey: ['paiement-ventilations'] });
+      void queryClient.invalidateQueries({ queryKey: ['quittances'] });
+      void queryClient.invalidateQueries({ queryKey: ['rappels'] });
     },
   });
 }
@@ -247,21 +289,90 @@ export async function ensureLoyerForMonth(
   const c = contrat as { jour_paiement: number; loyer: number; charges_mensuelles: number };
   const dateEcheance = dateEcheanceFor(annee, mois, c.jour_paiement);
 
-  const { data: inserted, error: errInsert } = await supabase
-    .from(TABLE)
-    .insert({
-      contrat_id: contratId,
-      mois,
-      annee,
-      montant_loyer: c.loyer,
-      montant_charges: c.charges_mensuelles,
-      date_echeance: dateEcheance,
-      statut: 'EN_ATTENTE',
-    })
-    .select('id')
-    .single();
+  const payloadAvecFlag = {
+    contrat_id: contratId,
+    mois,
+    annee,
+    montant_loyer: c.loyer,
+    montant_charges: c.charges_mensuelles,
+    date_echeance: dateEcheance,
+    statut: 'EN_ATTENTE' as const,
+    auto_genere_par_surplus: true,
+  };
+
+  const tryInsert = (payload: Record<string, unknown>) =>
+    supabase.from(TABLE).insert(payload).select('id').single();
+
+  let inserted: { id: string } | null = null;
+  let errInsert = null as unknown;
+
+  const first = await tryInsert(payloadAvecFlag);
+  if (first.error) {
+    // Si la migration `auto_genere_par_surplus` n'a pas encore été appliquée côté
+    // cloud, PostgREST renvoie une erreur "Could not find the 'auto_genere_par_surplus'
+    // column". On retry sans le flag pour que la fonctionnalité reste opérante.
+    const msg = first.error.message ?? '';
+    if (msg.includes('auto_genere_par_surplus') || first.error.code === 'PGRST204') {
+      const { auto_genere_par_surplus: _drop, ...payloadSansFlag } = payloadAvecFlag;
+      void _drop;
+      const fallback = await tryInsert(payloadSansFlag);
+      if (fallback.error) {
+        errInsert = fallback.error;
+      } else {
+        inserted = fallback.data as { id: string };
+      }
+    } else {
+      errInsert = first.error;
+    }
+  } else {
+    inserted = first.data as { id: string };
+  }
+
   if (errInsert) throw errInsert;
-  return { id: (inserted as { id: string }).id, created: true };
+  if (!inserted) throw new Error('Échec de création du loyer (réponse vide)');
+  return { id: inserted.id, created: true };
+}
+
+/**
+ * Supprime un loyer s'il est orphelin : auto-créé pour absorber un surplus,
+ * sans aucune ventilation de paiement, et avec `montant_paye = 0`.
+ * No-op sinon. Appelée après les opérations de paiement (delete/update) pour
+ * éviter de laisser des loyers fantômes en BDD.
+ */
+export async function cleanupOrphanLoyer(loyerId: string): Promise<boolean> {
+  const { data: loyer, error: errLoyer } = await supabase
+    .from(TABLE)
+    .select('id, auto_genere_par_surplus, montant_paye')
+    .eq('id', loyerId)
+    .maybeSingle();
+  if (errLoyer) throw errLoyer;
+  if (!loyer) return false;
+
+  const l = loyer as { id: string; auto_genere_par_surplus: boolean | null; montant_paye: number };
+  if (!l.auto_genere_par_surplus) return false;
+  if (Number(l.montant_paye) > 0.005) return false;
+
+  // Vérifier qu'aucune ventilation ne pointe encore sur ce loyer.
+  const { data: ventils, error: errVentils } = await supabase
+    .from('paiement_ventilations')
+    .select('id')
+    .eq('loyer_id', l.id)
+    .limit(1);
+  if (errVentils) throw errVentils;
+  if ((ventils ?? []).length > 0) return false;
+
+  // Pas de quittance non plus (sécurité).
+  const { data: quittances, error: errQ } = await supabase
+    .from('quittances')
+    .select('id')
+    .eq('loyer_id', l.id)
+    .limit(1);
+  if (errQ) throw errQ;
+  if ((quittances ?? []).length > 0) return false;
+
+  const { error: errDel } = await supabase.from(TABLE).delete().eq('id', l.id);
+  if (errDel) throw errDel;
+  return true;
 }
 
 export function useGenerateLoyers() {

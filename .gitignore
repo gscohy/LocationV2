@@ -53,6 +53,14 @@ uploads/
 # Screenshots / images locales hors source (signatures scan, captures, etc.)
 image/
 
+# Scripts de migration — fichiers sensibles / locaux
+scripts/migrate-from-local-v1/.env
+scripts/migrate-from-local-v1/.mapping.json
+scripts/migrate-from-local-v1/sortie-*.txt
+
+# Supabase CLI temp
+supabase/.temp/
+
 # Docker volumes (data persistante locale)
 infra/data/
 
