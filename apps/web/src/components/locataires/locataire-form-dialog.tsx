@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { CodePostalVilleFields } from '@/components/ui/code-postal-ville-fields';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useGarants } from '@/lib/db/garants';
@@ -427,21 +428,17 @@ export function LocataireFormDialog({ open, onOpenChange, locataire }: Props) {
               <Label htmlFor="adressePrecedente">Adresse</Label>
               <Input id="adressePrecedente" {...form.register('adressePrecedente')} />
             </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="codePostalPrecedent">Code postal</Label>
-                <Input id="codePostalPrecedent" {...form.register('codePostalPrecedent')} />
-                {errors.codePostalPrecedent && (
-                  <p className="text-xs text-destructive">
-                    {errors.codePostalPrecedent.message}
-                  </p>
-                )}
-              </div>
-              <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="villePrecedente">Ville</Label>
-                <Input id="villePrecedente" {...form.register('villePrecedente')} />
-              </div>
-            </div>
+            <CodePostalVilleFields
+              codePostal={form.watch('codePostalPrecedent')}
+              onCodePostalChange={(v) =>
+                form.setValue('codePostalPrecedent', v, { shouldDirty: true })
+              }
+              ville={form.watch('villePrecedente')}
+              onVilleChange={(v) => form.setValue('villePrecedente', v, { shouldDirty: true })}
+              codePostalError={errors.codePostalPrecedent?.message}
+              idPrefix="prec-"
+              required={false}
+            />
           </Section>
 
           <Section title="Profession & revenus">

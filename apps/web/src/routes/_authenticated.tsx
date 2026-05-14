@@ -1,7 +1,9 @@
 import { Link, Outlet, createFileRoute, redirect, useRouter } from '@tanstack/react-router';
 import {
+  Banknote,
   Building,
   Building2,
+  Calendar,
   FileText,
   Home,
   LogOut,
@@ -35,6 +37,8 @@ const navItems = [
   { to: '/locataires', label: 'Locataires', icon: UserCircle, exact: false },
   { to: '/garants', label: 'Garants', icon: ShieldCheck, exact: false },
   { to: '/contrats', label: 'Contrats', icon: FileText, exact: false },
+  { to: '/loyers', label: 'Loyers', icon: Calendar, exact: false },
+  { to: '/paiements', label: 'Paiements', icon: Banknote, exact: false },
 ] as const;
 
 function AuthenticatedLayout() {

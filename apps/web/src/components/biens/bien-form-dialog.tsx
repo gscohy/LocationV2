@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
+import { CodePostalVilleFields } from '@/components/ui/code-postal-ville-fields';
 import {
   Dialog,
   DialogContent,
@@ -473,20 +474,14 @@ export function BienFormDialog({ open, onOpenChange, bien }: Props) {
               <Label htmlFor="complementAdresse">Complément (bâtiment, étage…)</Label>
               <Input id="complementAdresse" {...form.register('complementAdresse')} />
             </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="codePostal">Code postal *</Label>
-                <Input id="codePostal" {...form.register('codePostal')} />
-                {errors.codePostal && (
-                  <p className="text-xs text-destructive">{errors.codePostal.message}</p>
-                )}
-              </div>
-              <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="ville">Ville *</Label>
-                <Input id="ville" {...form.register('ville')} />
-                {errors.ville && <p className="text-xs text-destructive">{errors.ville.message}</p>}
-              </div>
-            </div>
+            <CodePostalVilleFields
+              codePostal={form.watch('codePostal')}
+              onCodePostalChange={(v) => form.setValue('codePostal', v, { shouldDirty: true })}
+              ville={form.watch('ville')}
+              onVilleChange={(v) => form.setValue('ville', v, { shouldDirty: true })}
+              codePostalError={errors.codePostal?.message}
+              villeError={errors.ville?.message}
+            />
             <div className="space-y-1.5">
               <Label htmlFor="pays">Pays *</Label>
               <Input id="pays" {...form.register('pays')} />

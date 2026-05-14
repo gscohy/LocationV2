@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { CodePostalVilleFields } from '@/components/ui/code-postal-ville-fields';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { type Garant, useCreateGarant, useUpdateGarant } from '@/lib/db/garants';
@@ -274,16 +275,13 @@ export function GarantFormDialog({ open, onOpenChange, garant }: Props) {
               <Label htmlFor="adresse">Adresse</Label>
               <Input id="adresse" {...form.register('adresse')} />
             </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="codePostal">Code postal</Label>
-                <Input id="codePostal" {...form.register('codePostal')} />
-              </div>
-              <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="ville">Ville</Label>
-                <Input id="ville" {...form.register('ville')} />
-              </div>
-            </div>
+            <CodePostalVilleFields
+              codePostal={form.watch('codePostal')}
+              onCodePostalChange={(v) => form.setValue('codePostal', v, { shouldDirty: true })}
+              ville={form.watch('ville')}
+              onVilleChange={(v) => form.setValue('ville', v, { shouldDirty: true })}
+              required={false}
+            />
           </Section>
 
           <Section title="Garantie">

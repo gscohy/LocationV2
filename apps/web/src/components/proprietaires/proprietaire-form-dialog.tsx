@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { CodePostalVilleFields } from '@/components/ui/code-postal-ville-fields';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -220,20 +221,14 @@ export function ProprietaireFormDialog({ open, onOpenChange, proprietaire }: Pro
             {errors.adresse && <p className="text-xs text-destructive">{errors.adresse.message}</p>}
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="codePostal">Code postal *</Label>
-              <Input id="codePostal" placeholder="75001" {...form.register('codePostal')} />
-              {errors.codePostal && (
-                <p className="text-xs text-destructive">{errors.codePostal.message}</p>
-              )}
-            </div>
-            <div className="col-span-2 space-y-1.5">
-              <Label htmlFor="ville">Ville *</Label>
-              <Input id="ville" {...form.register('ville')} />
-              {errors.ville && <p className="text-xs text-destructive">{errors.ville.message}</p>}
-            </div>
-          </div>
+          <CodePostalVilleFields
+            codePostal={form.watch('codePostal')}
+            onCodePostalChange={(v) => form.setValue('codePostal', v, { shouldDirty: true })}
+            ville={form.watch('ville')}
+            onVilleChange={(v) => form.setValue('ville', v, { shouldDirty: true })}
+            codePostalError={errors.codePostal?.message}
+            villeError={errors.ville?.message}
+          />
 
           <div className="space-y-1.5">
             <Label htmlFor="numeroRIB">IBAN (pour réception des loyers)</Label>

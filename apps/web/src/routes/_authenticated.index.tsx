@@ -1,5 +1,14 @@
 import { Link, createFileRoute } from '@tanstack/react-router';
-import { ArrowRight, Building2, FileText, ShieldCheck, UserCircle, Users } from 'lucide-react';
+import {
+  ArrowRight,
+  Banknote,
+  Building2,
+  Calendar,
+  FileText,
+  ShieldCheck,
+  UserCircle,
+  Users,
+} from 'lucide-react';
 
 export const Route = createFileRoute('/_authenticated/')({
   component: HomePage,
@@ -36,6 +45,18 @@ const cards = [
     description: 'Baux liant un bien à des locataires, IRL, clauses, résiliation.',
     icon: FileText,
   },
+  {
+    to: '/loyers' as const,
+    title: 'Loyers',
+    description: 'Échéances mensuelles, génération automatique, suivi des soldes.',
+    icon: Calendar,
+  },
+  {
+    to: '/paiements' as const,
+    title: 'Paiements',
+    description: 'Encaissements ventilés sur les loyers, recalcul automatique des statuts.',
+    icon: Banknote,
+  },
 ];
 
 function HomePage() {
@@ -45,7 +66,7 @@ function HomePage() {
         <div className="space-y-2">
           <h1 className="text-4xl font-bold tracking-tight">Tableau de bord</h1>
           <p className="text-muted-foreground">
-            Modules disponibles. Loyers et paiements arrivent ensuite.
+            Modules disponibles. Les quittances PDF arrivent ensuite.
           </p>
         </div>
 

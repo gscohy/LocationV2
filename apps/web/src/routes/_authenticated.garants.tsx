@@ -22,9 +22,7 @@ const TYPE_LABEL: Record<TypeGarantie, string> = {
 };
 
 const formatEuro = (value: number) =>
-  new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(
-    value,
-  );
+  new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
 
 function GarantsPage() {
   const { data, isPending, error } = useGarants();

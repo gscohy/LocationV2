@@ -347,6 +347,14 @@ export function ContratFormDialog({ open, onOpenChange, contrat }: Props) {
 
   const onValid = async (values: FormValues) => {
     try {
+      const today = new Date().toISOString().slice(0, 10);
+      if (values.statut === 'BROUILLON' && values.dateDebut && values.dateDebut <= today) {
+        const dateLisible = new Date(values.dateDebut).toLocaleDateString('fr-FR');
+        const ok = window.confirm(
+          `La date de prise d'effet (${dateLisible}) est passée.\n\nActiver le contrat maintenant (passer le statut en ACTIF) ?`,
+        );
+        if (ok) values.statut = 'ACTIF';
+      }
       const input = formToInput(values);
       if (contrat) {
         await updateMutation.mutateAsync({ id: contrat.id, input });
