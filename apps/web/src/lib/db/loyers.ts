@@ -243,6 +243,7 @@ interface ContratGenRow {
   date_debut: string;
   date_fin: string | null;
   date_fin_reelle: string | null;
+  reconduction_tacite: boolean | null;
   jour_paiement: number;
   loyer: number;
   charges_mensuelles: number;
@@ -386,7 +387,9 @@ export function useGenerateLoyers() {
 
       let q = supabase
         .from('contrats')
-        .select('id, date_debut, date_fin, date_fin_reelle, jour_paiement, loyer, charges_mensuelles')
+        .select(
+          'id, date_debut, date_fin, date_fin_reelle, reconduction_tacite, jour_paiement, loyer, charges_mensuelles',
+        )
         .eq('statut', 'ACTIF');
       if (contratId) q = q.eq('id', contratId);
 
@@ -399,14 +402,22 @@ export function useGenerateLoyers() {
       let skipped = 0;
 
       for (const c of contrats) {
+        // Bail pas encore commencé
         if (c.date_debut > periodEnd) {
           skipped++;
           continue;
         }
-        if (c.date_fin && c.date_fin < periodStart) {
+        // date_fin théorique passée ET reconduction_tacite désactivée → contrat terminé
+        // (si reconduction tacite est vraie, on continue à générer même au-delà de date_fin)
+        if (
+          c.date_fin &&
+          c.date_fin < periodStart &&
+          c.reconduction_tacite === false
+        ) {
           skipped++;
           continue;
         }
+        // Fin réelle (résiliation effective) — toujours prioritaire
         if (c.date_fin_reelle && c.date_fin_reelle < periodStart) {
           skipped++;
           continue;
